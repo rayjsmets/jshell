@@ -4,6 +4,16 @@
 #include <unistd.h>
 #include <errno.h>
 
+typedef struct{
+	int type;
+	char* input;
+} FLAG;
+
+typedef struct{
+	int name;
+	FLAG flag;
+} CMD;
+
 void exit_jshell(int status){
     exit(status);
 }
