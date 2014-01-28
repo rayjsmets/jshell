@@ -17,7 +17,7 @@ int count_cmds(char* list){
     return 1024;
 }
 
-char** parse_pipes(char* list, const char a_delim){
+char** parse(char* list, const char a_delim){
     //parsing piped commands into array of commands with flags & args
     char* parsed = NULL;
     char **cmds_array;
@@ -60,18 +60,20 @@ int main(int argc, char **argv)
     char input_buffer[4096];
     while(1){
         fprintf(stdout, prompt);
-        if (fgets(input_buffer, sizeof(input_buffer), stdin) == 0){ // end of file (CTRL+D) => exit jshell
+	fgets(input_buffer, sizeof(input_buffer), stdin);
+        if (input_buffer == 0 // end of file (CTRL+D) => exit jshell
+            || strcmp(input_buffer, "exit\n") == 0){
             fprintf(stdout, "\n");
             exit_jshell(0);
         }else{
-            cmds_array = parse_pipes(input_buffer, '|');
+            cmds_array = parse(input_buffer, '|');
 		
-            //testing if cmds_array has what it should
+        //testing if cmds_array has what it should
 	    int x = 0;
 	    while(cmds_array[x] != '\0'){
-		printf("%i: %s\n", x, cmds_array[x]);
-		x++;
-            }
+		    printf("%i: %s\n", x, cmds_array[x]);
+		    x++;
+        }
 
             char **exec_args = (char **) malloc(sizeof(char *)*3);
             exec_args[0] = "ls";
