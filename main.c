@@ -8,7 +8,7 @@
 typedef struct{
 	char flag;
 	char** input; //parameters for the flag... 
-		      //could be more than one so array of inputs
+		          //could be more than one so array of inputs
 } OPTION; 
 
 typedef struct{
@@ -30,7 +30,8 @@ int count_cmds(char* list){
 }
 
 char** parse(char* list, const char a_delim){
-    //parsing piped commands into array of commands with flags & args
+    /*Built to be a generic parsing function, but primarilary used to
+      parse piped commands into array of commands with options & args*/
     char* parsed = NULL;
     char **cmds_array;
     char delim[2]; 
@@ -51,6 +52,13 @@ char** parse(char* list, const char a_delim){
         parsed = strtok(NULL, delim);
     }
     return cmds_array;
+}
+
+void parse_cmds(char *input){
+    /*Function to parse and properly structure each individual command.
+      Utilizes the COMMAND & OPTION structs defined above*/
+      
+      //TODO
 }
  
 int main(int argc, char **argv)
