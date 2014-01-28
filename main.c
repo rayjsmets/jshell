@@ -4,6 +4,18 @@
 #include <unistd.h>
 #include <errno.h>
 
+//Structures to pass arguments between pthreads
+typedef struct{
+	char flag;
+	char** input; //parameters for the flag... 
+		      //could be more than one so array of inputs
+} OPTION; 
+
+typedef struct{
+	char* name;
+	OPTION* options;
+} COMMAND;
+
 void exit_jshell(int status){
     exit(status);
 }
