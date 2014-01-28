@@ -8,37 +8,35 @@ void exit_jshell(int status){
     exit(status);
 }
 
-char** parse_pipes(char* list){
-    //parsing piped commands into array of commands with flags & args
-    char* parsed = NULL;
-    char cmds_array[1024][4096]; //this should probably be of variable length..
-    //char delims[] = {" \n"};
-    parsed = strtok(list, " | ");
-    int i = 0;
-    while(parsed != NULL){
-        printf("%s\n", parsed);
-        strcpy(cmds_array[i], parsed);
-        i++;
-        parsed = strtok(NULL, " | ");
-    }
-    return cmds_array;
+int count_cmds(char* list){
+    int i, count;
+    for(i=0 ; list[i]!='\0' ; i++)
+	if(list[i]=='|')
+	    count++;
+    //return count + 1;
+    return 1024;
 }
 
-void parse_cmds(int *list){
-    //parsing individual commands
-    //just same as above parse_pipes but different delimitter...
-    //will make single function in future
-    
+char** parse_pipes(char* list, const char a_delim){
+    //parsing piped commands into array of commands with flags & args
     char* parsed = NULL;
-    char cmds_array[1024][4096]; //this should probably be of variable length..
+    char **cmds_array;
+    char delim[2]; 
+	delim[0]= a_delim;
+	delim[1] = '\0';
+    int num_of_commands = count_cmds(list);
+    //printf("%i commands\n", num_of_commands);
+    cmds_array = malloc(num_of_commands * sizeof(char*));
     //char delims[] = {" \n"};
-    parsed = strtok(list, " ");
+    parsed = strtok(list, delim);
     int i = 0;
     while(parsed != NULL){
+	//want to remove leading white space here... TODO
         printf("%s\n", parsed);
-        strcpy(cmds_array[i], parsed);
+	cmds_array[i] = malloc(strlen(parsed) + 1);
+	strcpy(cmds_array[i], parsed);
         i++;
-        parsed = strtok(NULL, " ");
+        parsed = strtok(NULL, delim);
     }
     return cmds_array;
 }
@@ -55,7 +53,8 @@ int main(int argc, char **argv)
     }
     
     
-    //parseInput();
+    //parse input
+
      /* Our first simple C basic program */
      
     char input_buffer[4096];
@@ -65,7 +64,15 @@ int main(int argc, char **argv)
             fprintf(stdout, "\n");
             exit_jshell(0);
         }else{
-            cmds_array = parse_pipes(input_buffer);
+            cmds_array = parse_pipes(input_buffer, '|');
+		
+            //testing if cmds_array has what it should
+	    int x = 0;
+	    while(cmds_array[x] != '\0'){
+		printf("%i: %s\n", x, cmds_array[x]);
+		x++;
+            }
+
             char **exec_args = (char **) malloc(sizeof(char *)*3);
             exec_args[0] = "ls";
             exec_args[1] = "-la";
