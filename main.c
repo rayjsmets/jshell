@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <errno.h>
 
+<<<<<<< HEAD
 //Structures to pass arguments between pthreads
 typedef struct{
 	char flag;
