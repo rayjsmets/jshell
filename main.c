@@ -3,22 +3,23 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
-//Structures to pass arguments between pthreads
-typedef struct{
-	char flag;
-	char** input; //parameters for the flag... 
-		          //could be more than one so array of inputs
-} OPTION; 
 
+//Structure to hold indivdual command information
 typedef struct{
 	char* name;
-	//OPTION* options;
 	int in_fd, out_fd; //file descriptor values in & out
 	char** args; //arguments for the command
 	int arg_count; //number of args
 	int background; //run in background? 1 yes : 0 no
 	int read_file; //read from file? 1 yes : 0 no (read from command line)
+	int write_file; //write to file? 1 yes : no
+	char* read_file_name; 
+	char* write_file_name;
+	int append; //append? 1 yes : no
 } COMMAND;
 
 void exit_jshell(int status){
@@ -102,20 +103,42 @@ COMMAND* parse_cmds(char** input){
         commands[i].out_fd = 1; //STDOUT 
         commands[i].arg_count = x; // x = 1 here... only one argument for certain
         commands[i].background = 0; //don't background
-        commands[i].read_file = 0; //read from cmd line NOT file
+        commands[i].read_file = 0; //read from STDIN NOT file
+        commands[i].write_file = 0; //write to STDOUT NOT file
+        commands[i].read_file_name = NULL; //read from STDIN NOT file
+        commands[i].write_file_name = NULL; //write to STDOUT NOT file
+        commands[i].append = 0; //append? 1 yes : 0 no
         
         //loop through the different parts of each command to determine more COMMAND info
         while(holder_array[x] != NULL){
             if(strcmp(holder_array[x], "&") == 0){
                 commands[i].background = 1; //background flag set
             }
-            else if(strcmp(holder_array[x], "<") == 0){
+            if(strcmp(holder_array[x], "<") == 0){
                 commands[i].read_file = 1; //read from file flag set NOT from cmdline
+                commands[i].read_file_name = holder_array[x+1]; //grabbing file name (assuming must be directly after)
+            }
+            if(strcmp(holder_array[x], ">>") == 0){
+                commands[i].append = 1; //append flag set 
+                commands[i].write_file_name = holder_array[x+1]; //grabbing file name (assuming must be directly after)
+            }
+            else if(strcmp(holder_array[x], ">") == 0){
+                commands[i].write_file = 1; //write to file flag set
+                commands[i].write_file_name = holder_array[x+1]; //grabbing file name (assuming must be directly after)
             }
             
             commands[i].arg_count++;
             x++;
         }
+        
+        	printf("command name: %s\n", commands[i].name);
+	printf("command background?: %i\n", commands[i].background);
+	printf("command write file?: %i\n", commands[i].write_file);
+	printf("command append file?: %i\n", commands[i].append);
+	printf("command write file name: %s\n", commands[i].write_file_name);	
+	printf("command read file?: %i\n", commands[i].read_file);
+	printf("command read file name: %s\n", commands[i].read_file_name);
+        
         x = 0;
         i++;
       }
@@ -170,9 +193,9 @@ int main(int argc, char **argv)
             int* prevpipefd;
             int first = 1;
             int last = 0;
+            int last_child_pid = 0;
             i = 0;
-            
-            printf("num cmds: %d", num_cmds);
+            int filefd;
             
             while(i < num_cmds){
                 
@@ -185,29 +208,42 @@ int main(int argc, char **argv)
                     }
                 }
 
-                
-
-                if(fork() == 0){ // child process
-                
-                    printf("switching to %s %d\n", cmds_array[i].name, i);
+                if((last_child_pid = fork()) == 0){ // child process
+                    
+                    printf("write_file_name:%s\n", cmds_array[i].write_file_name);
                     
                     //read from pipe (unless first)
                     if(!first){
                         close(prevpipefd[1]);
                         dup2(prevpipefd[0],0);//TODO: error check
                         close(prevpipefd[0]);
-                    }else{
-                        printf("first\n");
                     }
+                    
+                    if(first && cmds_array[i].read_file){
+                        filefd = open(cmds_array[i].read_file_name, O_RDONLY, 0666);
+                        dup2(filefd,0);//TODO: error check
+                        close(filefd);
+                    }
+                    
                     if(!last){
-                        printf("not last\n");
                         //write to pipe
                         dup2(pipefd[1],1);//TODO: error check
                         
                         close(pipefd[0]);
                         close(pipefd[1]);
-                    }else{
-                        printf("last\n");
+                    }
+                    if(last && (cmds_array[i].write_file || cmds_array[i].append)){
+                        int mode;
+                        if(cmds_array[i].append){
+                            mode = O_RDWR | O_APPEND | O_CREAT;
+                        }else{
+                            mode = O_RDWR | O_TRUNC |  O_CREAT;
+                        }
+                        
+                        filefd = open(cmds_array[i].write_file_name, mode, 0666);
+                        
+                        dup2(filefd,1);//TODO: error check
+                        close(filefd);
                     }
                     
                     /*  good error code: 
@@ -228,12 +264,22 @@ int main(int argc, char **argv)
                         close(prevpipefd[1]);
                         close(prevpipefd[0]);
                     }
-                     prevpipefd = pipefd;
+                    prevpipefd = pipefd;
+                    
+                    if(filefd > 0){
+                        close(filefd);
+                    }
+                    filefd = 0;
                      
                 }
                 i++;
             }
-
+            close(prevpipefd[1]);
+            close(prevpipefd[0]);
+            
+            int wait_status;
+            //TODO: implement &
+            waitpid((pid_t) last_child_pid, &wait_status, 0);
         }
     }
     
