@@ -13,10 +13,16 @@ typedef struct{
 
 typedef struct{
 	char* name;
-	OPTION* options;
+	//OPTION* options;
+	int in_fd, out_fd; //file descriptor values in & out
+	char** args; //arguments for the command
+	int arg_count; //number of args
+	int background; //run in background? 1 yes : 0 no
+	int read_file; //read from file? 1 yes : 0 no (read from command line)
 } COMMAND;
 
 void exit_jshell(int status){
+    //TODO: clean up memory.
     exit(status);
 }
 
@@ -29,43 +35,100 @@ int count_cmds(char* list){
     return 1024;
 }
 
+
+// copied from: http://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way
+void trim(char * s) {
+    char * p = s;
+    int l = strlen(p);
+
+    while(isspace(p[l - 1])) p[--l] = 0;
+    while(* p && isspace(* p)) ++p, --l;
+
+    memmove(s, p, l + 1);
+}
+
+
 char** parse(char* list, const char a_delim){
     /*Built to be a generic parsing function, but primarilary used to
-      parse piped commands into array of commands with options & args*/
+      parse piped commands into array of commands between pipes*/
     char* parsed = NULL;
-    char **cmds_array;
+    char **return_array;
     char delim[2]; 
 	delim[0]= a_delim;
 	delim[1] = '\0';
     int num_of_commands = count_cmds(list);
     //printf("%i commands\n", num_of_commands);
-    cmds_array = malloc(num_of_commands * sizeof(char*));
-    //char delims[] = {" \n"};
+    return_array = malloc(num_of_commands * sizeof(char*));
+  
     parsed = strtok(list, delim);
     int i = 0;
     while(parsed != NULL){
-	//want to remove leading white space here... TODO
-        printf("%s\n", parsed);
-	cmds_array[i] = malloc(strlen(parsed) + 1);
-	strcpy(cmds_array[i], parsed);
+	    trim(parsed); //ensuring no extra whitespace
+        //printf("%s\n", parsed);
+	    return_array[i] = malloc(strlen(parsed) + 1);
+	    strcpy(return_array[i], parsed);
         i++;
         parsed = strtok(NULL, delim);
+        
     }
-    return cmds_array;
+    return_array[i] = NULL;
+    return return_array;
 }
 
-void parse_cmds(char *input){
+COMMAND* parse_cmds(char** input){
     /*Function to parse and properly structure each individual command.
-      Utilizes the COMMAND & OPTION structs defined above*/
+      Returns a list of COMMANDS*/
+      COMMAND* commands;
+      char** holder_array;
+      //commands = malloc(sizeof(input) * sizeof(char*) + sizeof(COMMAND)) 
+      commands = malloc(1024 * sizeof(COMMAND)); //mem alloc for commands array
+      int i = 0; 
+      int x = 0;
       
-      //TODO
+      //loop through the input array of commands with args until NULL terminator
+      while(input[i] != NULL){
+        holder_array = parse(input[i], ' ');
+        
+        //allocate mem for each index
+        //commands[i] = malloc(sizeof(COMMAND*)); //THIS MAY BE REPETATIVE IF 'MALLOC'ED ABOVE...?
+        
+        //assigning name of command
+        commands[i].name = holder_array[0]; 
+        commands[i].args = holder_array; //putting name in first element of args array
+        x++;
+        
+        //assigning defualt values for command[i];
+        commands[i].in_fd = 0; //STDIN
+        commands[i].out_fd = 1; //STDOUT 
+        commands[i].arg_count = x; // x = 1 here... only one argument for certain
+        commands[i].background = 0; //don't background
+        commands[i].read_file = 0; //read from cmd line NOT file
+        
+        //loop through the different parts of each command to determine more COMMAND info
+        while(holder_array[x] != NULL){
+            if(strcmp(holder_array[x], "&") == 0){
+                commands[i].background = 1; //background flag set
+            }
+            else if(strcmp(holder_array[x], "<") == 0){
+                commands[i].read_file = 1; //read from file flag set NOT from cmdline
+            }
+            
+            commands[i].arg_count++;
+            x++;
+        }
+        x = 0;
+        i++;
+      }
+      
+      commands[i].arg_count = 0; //acting as terminator
+      return commands;
 }
  
 int main(int argc, char **argv)
 {
     //decide on a prompt
     char* prompt;
-    char** cmds_array;
+    COMMAND* cmds_array;
     if(argc >= 2){
         prompt = argv[1];
     }else{
@@ -86,29 +149,91 @@ int main(int argc, char **argv)
             fprintf(stdout, "\n");
             exit_jshell(0);
         }else{
-            cmds_array = parse(input_buffer, '|');
-		
-        //testing if cmds_array has what it should
-	    int x = 0;
-	    while(cmds_array[x] != '\0'){
-		    printf("%i: %s\n", x, cmds_array[x]);
-		    x++;
-        }
-
+            cmds_array = parse_cmds(parse(input_buffer, '|'));
+            /*
             char **exec_args = (char **) malloc(sizeof(char *)*3);
             exec_args[0] = "ls";
             exec_args[1] = "-la";
             exec_args[2] = NULL;
+            */
+            
+            //count the number of commands
+            int i = 0;
+            while(cmds_array[i].arg_count > 0){
+                i++;
+            }
+            int num_cmds = i;
             
             int status;
             
-            if(fork() == 0){ // child process
-                int code = execvp(exec_args[0],exec_args);
-                fprintf(stderr, "jsh: %s: Error %d, %s\n", exec_args[0], errno, strerror(errno));
-                exit(1);
-            }else{ //jshell process
-                wait(&status);
+            int pipefd[2];
+            int* prevpipefd;
+            int first = 1;
+            int last = 0;
+            i = 0;
+            
+            printf("num cmds: %d", num_cmds);
+            
+            while(i < num_cmds){
+                
+                if(i == num_cmds-1){
+                    last = 1;
+                }else{
+                    if (pipe(pipefd) < 0) {
+                        perror("jsh: pipe");
+                        exit(1);
+                    }
+                }
+
+                
+
+                if(fork() == 0){ // child process
+                
+                    printf("switching to %s %d\n", cmds_array[i].name, i);
+                    
+                    //read from pipe (unless first)
+                    if(!first){
+                        close(prevpipefd[1]);
+                        dup2(prevpipefd[0],0);//TODO: error check
+                        close(prevpipefd[0]);
+                    }else{
+                        printf("first\n");
+                    }
+                    if(!last){
+                        printf("not last\n");
+                        //write to pipe
+                        dup2(pipefd[1],1);//TODO: error check
+                        
+                        close(pipefd[0]);
+                        close(pipefd[1]);
+                    }else{
+                        printf("last\n");
+                    }
+                    
+                    /*  good error code: 
+                        if (dup2(pipefd[1], 1) != 1) {
+                            perror("jsh: dup2");
+                         exit(1);
+                        }
+                    */
+                    
+                    int code = execvp(cmds_array[i].name , cmds_array[i].args);
+                    fprintf(stderr, "jsh: %s: Error %d, %s\n", cmds_array[i].name, errno, strerror(errno));
+                    exit(1);
+                }else{ //jshell process
+                    
+                    if(first){
+                        first = 0;
+                    }else{
+                        close(prevpipefd[1]);
+                        close(prevpipefd[0]);
+                    }
+                     prevpipefd = pipefd;
+                     
+                }
+                i++;
             }
+
         }
     }
     
