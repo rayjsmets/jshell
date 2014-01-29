@@ -210,7 +210,6 @@ int main(int argc, char **argv)
 
                 if((last_child_pid = fork()) == 0){ // child process
                     
-                    printf("write_file_name:%s\n", cmds_array[i].write_file_name);
                     
                     //read from pipe (unless first)
                     if(!first){
